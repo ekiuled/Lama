@@ -74,8 +74,12 @@ bytefile* read_file (char *fname) {
 
 /* Bytecode aliases */
 typedef enum opcode {
-  BINOP, GROUP1, LD, LDA, ST, GROUP2, PATT, CALLS, STOP = 15
+  BINOP, GROUP1, LD, LDA, ST, GROUP2, PATTERN, RUNTIME, STOP = 15
 } opcode;
+
+typedef enum binop {
+  PLUS = 1, MINUS, MULT, DIV, MOD, LT, LE, GT, GE, EQ, NEQ, AND, OR
+} binop;
 
 typedef enum group1 {
   CONST, STRING, SEXP, STI, STA, JMP, END, RET, DROP, DUP, SWAP, ELEM
@@ -257,11 +261,11 @@ void disassemble (FILE *f, bytefile *bf) {
       }
       break;
       
-    case PATT:
+    case PATTERN:
       fprintf (f, "PATT\t%s", pats[l]);
       break;
 
-    case CALLS: {
+    case RUNTIME: {
       switch (l) {
       case LREAD:
         fprintf (f, "CALL\tLread");
@@ -317,7 +321,227 @@ void dump_file (FILE *f, bytefile *bf) {
 
 /* Stack machine iterative interpreter */
 void interpreter (bytefile *bf) {
-  // TODO
+  int *stack = malloc(10 * 1024 * 1024);
+  int *sp = stack;
+  char *ip = bf->code_ptr;
+
+# define POP         *(--sp)
+# define PEEK        *(sp - 1)
+# define PUSH(x)     *(sp++) = x
+
+# define UNBOX(x)    (((int) (x)) >> 1)
+# define BOX(x)      ((((int) (x)) << 1) | 0x0001)
+
+  do {
+    char x = BYTE,
+         h = (x & 0xF0) >> 4,
+         l = x & 0x0F;
+
+    switch (h) {
+    case STOP:
+      // TODO
+      return;
+      
+    case BINOP:
+      int y = POP;
+      int x = POP;
+      switch (l) {
+      case  PLUS: PUSH(x +  y); break;
+      case MINUS: PUSH(x -  y); break;
+      case  MULT: PUSH(x *  y); break;
+      case   DIV: PUSH(x /  y); break;
+      case   MOD: PUSH(x %  y); break;
+      case    LT: PUSH(x <  y); break;
+      case    LE: PUSH(x <= y); break;
+      case    GT: PUSH(x >  y); break;
+      case    GE: PUSH(x >= y); break;
+      case    EQ: PUSH(x == y); break;
+      case   NEQ: PUSH(x != y); break;
+      case   AND: PUSH(x && y); break;
+      case    OR: PUSH(x || y); break;
+      default: FAILURE; 
+      }
+      break;
+      
+    case GROUP1:
+      switch (l) {
+      case CONST:
+        PUSH(INT);
+        break;
+        
+      case STRING:
+        printf ("STRING\t%s", GETSTRING);
+        break;
+          
+      case SEXP:
+        printf ("SEXP\t%s ", GETSTRING);
+        printf ("%d", INT);
+        break;
+        
+      case  STI:
+        printf ("STI");
+        break;
+        
+      case  STA:
+        printf ("STA");
+        break;
+        
+      case  JMP:
+        printf ("JMP\t0x%.8x", INT);
+        break;
+        
+      case  END:
+        printf ("END");
+        break;
+        
+      case  RET:
+        printf ("RET");
+        break;
+        
+      case DROP:
+        POP;
+        break;
+        
+      case  DUP:
+        printf ("DUP");
+        break;
+        
+      case SWAP:
+        printf ("SWAP");
+        break;
+
+      case ELEM:
+        printf ("ELEM");
+        break;
+        
+      default:
+        FAILURE;
+      }
+      break;
+      
+    case LD:
+      switch (l) {
+      case GLOBAL: PUSH(UNBOX(*(bf->global_ptr + INT))); break;
+      case  LOCAL: printf ("L(%d)", INT); break;
+      case    ARG: printf ("A(%d)", INT); break;
+      case ACCESS: printf ("C(%d)", INT); break;
+      default: FAILURE;
+      }
+      break;
+    case LDA:
+    case ST:
+      switch (l) {
+      case GLOBAL: *(bf->global_ptr + INT) = BOX(PEEK); break;
+      case  LOCAL: printf ("L(%d)", INT); break;
+      case    ARG: printf ("A(%d)", INT); break;
+      case ACCESS: printf ("C(%d)", INT); break;
+      default: FAILURE;
+      }
+      break;
+      
+    case GROUP2:
+      switch (l) {
+      case CJMPz:
+        printf ("CJMPz\t0x%.8x", INT);
+        break;
+        
+      case CJMPnz:
+        printf ("CJMPnz\t0x%.8x", INT);
+        break;
+        
+      case BEGIN:
+        INT; INT;
+        break;
+        
+      case CBEGIN:
+        printf ("CBEGIN\t%d ", INT);
+        printf ("%d", INT);
+        break;
+        
+      case CLOSURE:
+        printf ("CLOSURE\t0x%.8x", INT);
+        {int n = INT;
+         for (int i = 0; i<n; i++) {
+         switch (BYTE) {
+           case GLOBAL: printf ("G(%d)", INT); break;
+           case  LOCAL: printf ("L(%d)", INT); break;
+           case    ARG: printf ("A(%d)", INT); break;
+           case ACCESS: printf ("C(%d)", INT); break;
+           default: FAILURE;
+         }
+         }
+        };
+        break;
+          
+      case CALLC:
+        printf ("CALLC\t%d", INT);
+        break;
+        
+      case CALL:
+        printf ("CALL\t0x%.8x ", INT);
+        printf ("%d", INT);
+        break;
+        
+      case TAG:
+        printf ("TAG\t%s ", GETSTRING);
+        printf ("%d", INT);
+        break;
+        
+      case ARRAY:
+        printf ("ARRAY\t%d", INT);
+        break;
+        
+      case FAIL:
+        printf ("FAIL\t%d", INT);
+        printf ("%d", INT);
+        break;
+        
+      case LINE:
+        INT;
+        break;
+
+      default:
+        FAILURE;
+      }
+      break;
+      
+    case PATTERN:
+      // printf ("PATT\t%s", pats[l]);
+      break;
+
+    case RUNTIME: {
+      switch (l) {
+      case LREAD:
+        PUSH(UNBOX(Lread()));
+        break;
+        
+      case LWRITE:
+        PUSH(UNBOX(Lwrite(BOX(POP))));
+        break;
+
+      case LLENGTH:
+        PUSH(UNBOX(Llength(POP)));
+        break;
+
+      case LSTRING:
+        PUSH(UNBOX(Lstring(POP)));
+        break;
+
+      case BARRAY:
+        printf ("CALL\tBarray\t%d", INT);
+        break;
+
+      default:
+        FAILURE;
+      }
+    }
+    break;
+      
+    default:
+      FAILURE;
+    }
+  }
+  while (1);
 }
 
 /* 
