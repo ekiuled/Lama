@@ -72,13 +72,34 @@ bytefile* read_file (char *fname) {
   return file;
 }
 
+/* Bytecode aliases */
+typedef enum opcode {
+  BINOP, GROUP1, LD, LDA, ST, GROUP2, PATT, CALLS, STOP = 15
+} opcode;
+
+typedef enum group1 {
+  CONST, STRING, SEXP, STI, STA, JMP, END, RET, DROP, DUP, SWAP, ELEM
+} group1;
+
+typedef enum group2 {
+  CJMPz, CJMPnz, BEGIN, CBEGIN, CLOSURE, CALLC, CALL, TAG, ARRAY, FAIL, LINE
+} group2;
+
+typedef enum calls {
+  LREAD, LWRITE, LLENGTH, LSTRING, BARRAY
+} calls;
+
+typedef enum designation {
+  GLOBAL, LOCAL, ARG, ACCESS
+} designation;
+
 /* Disassembles the bytecode pool */
 void disassemble (FILE *f, bytefile *bf) {
   
-# define INT    (ip += sizeof (int), *(int*)(ip - sizeof (int)))
-# define BYTE   *ip++
-# define STRING get_string (bf, INT)
-# define FAIL   failure ("ERROR: invalid opcode %d-%d\n", h, l)
+# define INT       (ip += sizeof (int), *(int*)(ip - sizeof (int)))
+# define BYTE      *ip++
+# define GETSTRING get_string (bf, INT)
+# define FAILURE   failure ("ERROR: invalid opcode %d-%d\n", h, l)
   
   char *ip     = bf->code_ptr;
   char *ops [] = {"+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "!!"};
@@ -92,184 +113,184 @@ void disassemble (FILE *f, bytefile *bf) {
     fprintf (f, "0x%.8x:\t", ip-bf->code_ptr-1);
     
     switch (h) {
-    case 15:
+    case STOP:
       goto stop;
       
     /* BINOP */
-    case 0:
+    case BINOP:
       fprintf (f, "BINOP\t%s", ops[l-1]);
       break;
       
-    case 1:
+    case GROUP1:
       switch (l) {
-      case  0:
+      case CONST:
         fprintf (f, "CONST\t%d", INT);
         break;
         
-      case  1:
-        fprintf (f, "STRING\t%s", STRING);
+      case STRING:
+        fprintf (f, "STRING\t%s", GETSTRING);
         break;
           
-      case  2:
-        fprintf (f, "SEXP\t%s ", STRING);
+      case SEXP:
+        fprintf (f, "SEXP\t%s ", GETSTRING);
         fprintf (f, "%d", INT);
         break;
         
-      case  3:
+      case  STI:
         fprintf (f, "STI");
         break;
         
-      case  4:
+      case  STA:
         fprintf (f, "STA");
         break;
         
-      case  5:
+      case  JMP:
         fprintf (f, "JMP\t0x%.8x", INT);
         break;
         
-      case  6:
+      case  END:
         fprintf (f, "END");
         break;
         
-      case  7:
+      case  RET:
         fprintf (f, "RET");
         break;
         
-      case  8:
+      case DROP:
         fprintf (f, "DROP");
         break;
         
-      case  9:
+      case  DUP:
         fprintf (f, "DUP");
         break;
         
-      case 10:
+      case SWAP:
         fprintf (f, "SWAP");
         break;
 
-      case 11:
+      case ELEM:
         fprintf (f, "ELEM");
         break;
         
       default:
-        FAIL;
+        FAILURE;
       }
       break;
       
-    case 2:
-    case 3:
-    case 4:
+    case LD:
+    case LDA:
+    case ST:
       fprintf (f, "%s\t", lds[h-2]);
       switch (l) {
-      case 0: fprintf (f, "G(%d)", INT); break;
-      case 1: fprintf (f, "L(%d)", INT); break;
-      case 2: fprintf (f, "A(%d)", INT); break;
-      case 3: fprintf (f, "C(%d)", INT); break;
-      default: FAIL;
+      case GLOBAL: fprintf (f, "G(%d)", INT); break;
+      case  LOCAL: fprintf (f, "L(%d)", INT); break;
+      case    ARG: fprintf (f, "A(%d)", INT); break;
+      case ACCESS: fprintf (f, "C(%d)", INT); break;
+      default: FAILURE;
       }
       break;
       
-    case 5:
+    case GROUP2:
       switch (l) {
-      case  0:
+      case CJMPz:
         fprintf (f, "CJMPz\t0x%.8x", INT);
         break;
         
-      case  1:
+      case CJMPnz:
         fprintf (f, "CJMPnz\t0x%.8x", INT);
         break;
         
-      case  2:
+      case BEGIN:
         fprintf (f, "BEGIN\t%d ", INT);
         fprintf (f, "%d", INT);
         break;
         
-      case  3:
+      case CBEGIN:
         fprintf (f, "CBEGIN\t%d ", INT);
         fprintf (f, "%d", INT);
         break;
         
-      case  4:
+      case CLOSURE:
         fprintf (f, "CLOSURE\t0x%.8x", INT);
         {int n = INT;
          for (int i = 0; i<n; i++) {
          switch (BYTE) {
-           case 0: fprintf (f, "G(%d)", INT); break;
-           case 1: fprintf (f, "L(%d)", INT); break;
-           case 2: fprintf (f, "A(%d)", INT); break;
-           case 3: fprintf (f, "C(%d)", INT); break;
-           default: FAIL;
+           case GLOBAL: fprintf (f, "G(%d)", INT); break;
+           case  LOCAL: fprintf (f, "L(%d)", INT); break;
+           case    ARG: fprintf (f, "A(%d)", INT); break;
+           case ACCESS: fprintf (f, "C(%d)", INT); break;
+           default: FAILURE;
          }
          }
         };
         break;
           
-      case  5:
+      case CALLC:
         fprintf (f, "CALLC\t%d", INT);
         break;
         
-      case  6:
+      case CALL:
         fprintf (f, "CALL\t0x%.8x ", INT);
         fprintf (f, "%d", INT);
         break;
         
-      case  7:
-        fprintf (f, "TAG\t%s ", STRING);
+      case TAG:
+        fprintf (f, "TAG\t%s ", GETSTRING);
         fprintf (f, "%d", INT);
         break;
         
-      case  8:
+      case ARRAY:
         fprintf (f, "ARRAY\t%d", INT);
         break;
         
-      case  9:
+      case FAIL:
         fprintf (f, "FAIL\t%d", INT);
         fprintf (f, "%d", INT);
         break;
         
-      case 10:
+      case LINE:
         fprintf (f, "LINE\t%d", INT);
         break;
 
       default:
-        FAIL;
+        FAILURE;
       }
       break;
       
-    case 6:
+    case PATT:
       fprintf (f, "PATT\t%s", pats[l]);
       break;
 
-    case 7: {
+    case CALLS: {
       switch (l) {
-      case 0:
+      case LREAD:
         fprintf (f, "CALL\tLread");
         break;
         
-      case 1:
+      case LWRITE:
         fprintf (f, "CALL\tLwrite");
         break;
 
-      case 2:
+      case LLENGTH:
         fprintf (f, "CALL\tLlength");
         break;
 
-      case 3:
+      case LSTRING:
         fprintf (f, "CALL\tLstring");
         break;
 
-      case 4:
+      case BARRAY:
         fprintf (f, "CALL\tBarray\t%d", INT);
         break;
 
       default:
-        FAIL;
+        FAILURE;
       }
     }
     break;
       
     default:
-      FAIL;
+      FAILURE;
     }
 
     fprintf (f, "\n");
@@ -294,8 +315,26 @@ void dump_file (FILE *f, bytefile *bf) {
   disassemble (f, bf);
 }
 
+/* Stack machine iterative interpreter */
+void interpreter (bytefile *bf) {
+  // TODO
+}
+
+/* 
+  Disassemble or interpret Lama SM bytecode 
+  Usage: byterun <input file> <mode>
+  Modes:
+    -d --- disassemble (default)
+    -i --- interpret
+*/
 int main (int argc, char* argv[]) {
-  bytefile *f = read_file (argv[1]);
-  dump_file (stdout, f);
+  char* fname = argv[1];
+  char* mode = argc > 2 ? argv[2] : "-d";
+  bytefile *f = read_file (fname);
+  if (!strcmp(mode, "-d")) {
+    dump_file (stdout, f);
+  } else if (!strcmp(mode, "-i")) {
+    interpreter (f);
+  }
   return 0;
 }
