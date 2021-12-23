@@ -89,13 +89,17 @@ typedef enum group2 {
   CJMPz, CJMPnz, BEGIN, CBEGIN, CLOSURE, CALLC, CALL, TAG, ARRAY, FAIL, LINE
 } group2;
 
-typedef enum calls {
+typedef enum runtime {
   LREAD, LWRITE, LLENGTH, LSTRING, BARRAY
-} calls;
+} runtime;
 
 typedef enum designation {
   GLOBAL, LOCAL, ARG, ACCESS
 } designation;
+
+typedef enum pattern {
+  str, string, array, sexp, ref, val, fun
+} pattern;
 
 /* Disassembles the bytecode pool */
 void disassemble (FILE *f, bytefile *bf) {
@@ -320,7 +324,7 @@ void dump_file (FILE *f, bytefile *bf) {
 }
 
 /* Stack machine iterative interpreter */
-void interpreter (bytefile *bf) {
+void interpreter (char *fname, bytefile *bf) {
   int *stack = malloc(10 * 1024 * 1024);
   int *sp = stack;
   char *ip = bf->code_ptr;
@@ -339,10 +343,12 @@ void interpreter (bytefile *bf) {
 
     switch (h) {
     case STOP:
-      // TODO
+      free(stack);
       return;
       
+    /* binary operator */
     case BINOP:
+    {
       int y = POP;
       int x = POP;
       switch (l) {
@@ -362,76 +368,125 @@ void interpreter (bytefile *bf) {
       default: FAILURE; 
       }
       break;
+    }
       
     case GROUP1:
       switch (l) {
+      /* put a constant on the stack */
       case CONST:
         PUSH(INT);
         break;
-        
+
+      /* put a string on the stack */  
       case STRING:
-        printf ("STRING\t%s", GETSTRING);
+        PUSH(Bstring(bf->string_ptr + INT));
         break;
           
+      /* create an S-expression */    
       case SEXP:
         printf ("SEXP\t%s ", GETSTRING);
         printf ("%d", INT);
         break;
         
+      /* store a value into a reference */
       case  STI:
-        printf ("STI");
+      {
+        int x = POP;
+        int v = POP;
+        PUSH(x);
+        bf->global_ptr[v] = BOX(x);
         break;
+      }
         
+      /* store a value into array/sexp/string */
       case  STA:
-        printf ("STA");
+      {
+        int v = POP;
+        int i = POP;
+        int x = POP;
+        PUSH(UNBOX(Bsta(BOX(v), BOX(i), BOX(x))));
         break;
+      }
         
+      /* unconditional jump */
       case  JMP:
-        printf ("JMP\t0x%.8x", INT);
+        ip = bf->code_ptr + INT;
         break;
         
+      /* end procedure definition */
       case  END:
-        printf ("END");
+        // printf ("END");
         break;
         
+      /* returns from a function */
       case  RET:
         printf ("RET");
         break;
         
+      /* drops the top element off */
       case DROP:
         POP;
         break;
         
+      /* duplicates the top element */
       case  DUP:
-        printf ("DUP");
+      {
+        int x = POP;
+        PUSH(x);
+        PUSH(x);
         break;
+      }
         
+      /* swaps two top elements */
       case SWAP:
-        printf ("SWAP");
+      {
+        int y = POP;
+        int x = POP;
+        PUSH(y);
+        PUSH(x);
         break;
+      }
 
+      /* takes an element of array/string/sexp */
       case ELEM:
-        printf ("ELEM");
+      {
+        int i = POP;
+        int p = POP;
+        PUSH(UNBOX(Belem(BOX(p), BOX(i))));
         break;
+      }
         
       default:
         FAILURE;
       }
       break;
       
+    /* load a variable to the stack */
     case LD:
       switch (l) {
-      case GLOBAL: PUSH(UNBOX(*(bf->global_ptr + INT))); break;
+      case GLOBAL: PUSH(UNBOX(bf->global_ptr[INT])); break;
       case  LOCAL: printf ("L(%d)", INT); break;
       case    ARG: printf ("A(%d)", INT); break;
       case ACCESS: printf ("C(%d)", INT); break;
       default: FAILURE;
       }
       break;
+
+    /* load a variable address to the stack */
     case LDA:
+      switch (l) {
+      case GLOBAL: PUSH(UNBOX(bf->global_ptr + INT)); break;
+      case  LOCAL: printf ("L(%d)", INT); break;
+      case    ARG: printf ("A(%d)", INT); break;
+      case ACCESS: printf ("C(%d)", INT); break;
+      default: FAILURE;
+      }
+      break;
+
+    /* store a value into a variable */
     case ST:
       switch (l) {
-      case GLOBAL: *(bf->global_ptr + INT) = BOX(PEEK); break;
+      case GLOBAL: bf->global_ptr[INT] = BOX(PEEK); break;
       case  LOCAL: printf ("L(%d)", INT); break;
       case    ARG: printf ("A(%d)", INT); break;
       case ACCESS: printf ("C(%d)", INT); break;
@@ -441,23 +496,34 @@ void interpreter (bytefile *bf) {
       
     case GROUP2:
       switch (l) {
+      /* conditional jump */
       case CJMPz:
-        printf ("CJMPz\t0x%.8x", INT);
+      {
+        int l = INT;
+        if (!POP) bf->code_ptr = l;
         break;
+      }
         
+      /* conditional jump */
       case CJMPnz:
-        printf ("CJMPnz\t0x%.8x", INT);
+      {
+        int l = INT; 
+        if (POP) bf->code_ptr = l;
         break;
+      }
         
+      /* begins procedure definition */
       case BEGIN:
         INT; INT;
         break;
         
+      /* */
       case CBEGIN:
         printf ("CBEGIN\t%d ", INT);
         printf ("%d", INT);
         break;
         
+      /* create a closure */
       case CLOSURE:
         printf ("CLOSURE\t0x%.8x", INT);
         {int n = INT;
@@ -473,29 +539,47 @@ void interpreter (bytefile *bf) {
         };
         break;
           
+      /* calls a closure */
       case CALLC:
         printf ("CALLC\t%d", INT);
         break;
         
+      /* calls a function/procedure */
       case CALL:
         printf ("CALL\t0x%.8x ", INT);
         printf ("%d", INT);
         break;
         
+      /* checks the tag and arity of S-expression */
       case TAG:
-        printf ("TAG\t%s ", GETSTRING);
-        printf ("%d", INT);
+      {
+        int d = POP;
+        int h = LtagHash(bf->string_ptr + INT);
+        int n = INT;
+        PUSH(UNBOX(Btag(BOX(d), h, BOX(n))));
         break;
+      }
         
+      /* checks the tag and size of array */
       case ARRAY:
-        printf ("ARRAY\t%d", INT);
+      {
+        int d = POP;
+        int n = INT;
+        PUSH(UNBOX(Barray_patt(BOX(d), BOX(n))));
         break;
+      }
         
+      /* match failure location, leave a value */
       case FAIL:
-        printf ("FAIL\t%d", INT);
-        printf ("%d", INT);
+      {
+        int v = POP;
+        int line = INT;
+        int col = INT;
+        Bmatch_failure(BOX(v), fname, BOX(line), BOX(col));
         break;
+      }
         
+      /* line info */
       case LINE:
         INT;
         break;
@@ -505,7 +589,18 @@ void interpreter (bytefile *bf) {
       }
       break;
       
+    /* checks various patterns */
     case PATTERN:
+      switch (l) {
+      case    str: PUSH(UNBOX(Bstring_patt(BOX(POP), BOX(POP)))); break;
+      case string: PUSH(UNBOX(Bstring_tag_patt(BOX(POP)))); break;
+      case  array: PUSH(UNBOX(Barray_tag_patt(BOX(POP)))); break;
+      case   sexp: PUSH(UNBOX(Bsexp_tag_patt(BOX(POP)))); break;
+      case    ref: PUSH(UNBOX(Bboxed_patt(BOX(POP)))); break;
+      case    val: PUSH(UNBOX(Bunboxed_patt(BOX(POP)))); break;
+      case    fun: PUSH(UNBOX(Bclosure_tag_patt(BOX(POP)))); break;
+      default: FAILURE;
+      }
       // printf ("PATT\t%s", pats[l]);
       break;
 
@@ -558,7 +653,7 @@ int main (int argc, char* argv[]) {
   if (!strcmp(mode, "-d")) {
     dump_file (stdout, f);
   } else if (!strcmp(mode, "-i")) {
-    interpreter (f);
+    interpreter (fname, f);
   }
   return 0;
 }
