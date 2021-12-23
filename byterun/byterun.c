@@ -323,10 +323,20 @@ void dump_file (FILE *f, bytefile *bf) {
   disassemble (f, bf);
 }
 
+/* Activation frame */
+typedef struct {
+  struct frame *previousFP;
+  int *previousIP;
+  int *args;
+  int *locals;
+  int *access;
+} frame;
+
 /* Stack machine iterative interpreter */
 void interpreter (char *fname, bytefile *bf) {
   int *stack = malloc(10 * 1024 * 1024);
   int *sp = stack;
+  frame *fp = sp;
   char *ip = bf->code_ptr;
 
 # define POP         *(--sp)
@@ -343,8 +353,7 @@ void interpreter (char *fname, bytefile *bf) {
 
     switch (h) {
     case STOP:
-      free(stack);
-      return;
+      goto stop;
       
     /* binary operator */
     case BINOP:
@@ -415,12 +424,14 @@ void interpreter (char *fname, bytefile *bf) {
         
       /* end procedure definition */
       case  END:
-        // printf ("END");
-        break;
-        
       /* returns from a function */
       case  RET:
-        printf ("RET");
+        if (fp->args == stack) goto stop;
+        int result = POP;
+        sp = fp->args;
+        ip = fp->previousIP;
+        fp = fp->previousFP;
+        PUSH(result);
         break;
         
       /* drops the top element off */
@@ -464,9 +475,9 @@ void interpreter (char *fname, bytefile *bf) {
     /* load a variable to the stack */
     case LD:
       switch (l) {
-      case GLOBAL: PUSH(UNBOX(bf->global_ptr[INT])); break;
-      case  LOCAL: printf ("L(%d)", INT); break;
-      case    ARG: printf ("A(%d)", INT); break;
+      case GLOBAL: PUSH(bf->global_ptr[INT]); break;
+      case  LOCAL: PUSH(fp->locals[INT]); break;
+      case    ARG: PUSH(fp->args[INT]); break;
       case ACCESS: printf ("C(%d)", INT); break;
       default: FAILURE;
       }
@@ -475,9 +486,9 @@ void interpreter (char *fname, bytefile *bf) {
     /* load a variable address to the stack */
     case LDA:
       switch (l) {
-      case GLOBAL: PUSH(UNBOX(bf->global_ptr + INT)); break;
-      case  LOCAL: printf ("L(%d)", INT); break;
-      case    ARG: printf ("A(%d)", INT); break;
+      case GLOBAL: PUSH(bf->global_ptr + INT); break;
+      case  LOCAL: PUSH(fp->locals + INT); break;
+      case    ARG: PUSH(fp->args + INT); break;
       case ACCESS: printf ("C(%d)", INT); break;
       default: FAILURE;
       }
@@ -486,9 +497,9 @@ void interpreter (char *fname, bytefile *bf) {
     /* store a value into a variable */
     case ST:
       switch (l) {
-      case GLOBAL: bf->global_ptr[INT] = BOX(PEEK); break;
-      case  LOCAL: printf ("L(%d)", INT); break;
-      case    ARG: printf ("A(%d)", INT); break;
+      case GLOBAL: bf->global_ptr[INT] = PEEK; break;
+      case  LOCAL: fp->locals[INT] = PEEK; break;
+      case    ARG: fp->args[INT] = PEEK; break;
       case ACCESS: printf ("C(%d)", INT); break;
       default: FAILURE;
       }
@@ -500,7 +511,7 @@ void interpreter (char *fname, bytefile *bf) {
       case CJMPz:
       {
         int l = INT;
-        if (!POP) bf->code_ptr = l;
+        if (!POP) ip = bf->code_ptr + l;
         break;
       }
         
@@ -508,16 +519,30 @@ void interpreter (char *fname, bytefile *bf) {
       case CJMPnz:
       {
         int l = INT; 
-        if (POP) bf->code_ptr = l;
+        if (POP) ip = bf->code_ptr + l;
         break;
       }
         
       /* begins procedure definition */
       case BEGIN:
-        INT; INT;
+      {
+        int args = INT;
+        int locals = INT;
+        int operands = args + 1;
+        sp += operands;
+        int *previousIP = POP;
+        frame *newFP = sp;
+        newFP->previousFP = fp;
+        newFP->previousIP = previousIP;
+        newFP->args = sp - args;
+        sp += sizeof(frame);
+        newFP->locals = sp;
+        sp += locals;
+        fp = newFP;
         break;
+      }
         
-      /* */
+      /* begins procedure definition with closure */
       case CBEGIN:
         printf ("CBEGIN\t%d ", INT);
         printf ("%d", INT);
@@ -546,9 +571,15 @@ void interpreter (char *fname, bytefile *bf) {
         
       /* calls a function/procedure */
       case CALL:
-        printf ("CALL\t0x%.8x ", INT);
-        printf ("%d", INT);
+      {
+        int l = INT;
+        int args = INT;
+        int operands = args + 1;
+        PUSH(ip);
+        sp -= operands;
+        ip = bf->code_ptr + l;
         break;
+      }
         
       /* checks the tag and arity of S-expression */
       case TAG:
@@ -637,6 +668,7 @@ void interpreter (char *fname, bytefile *bf) {
     }
   }
   while (1);
+ stop: free(stack);
 }
 
 /* 
