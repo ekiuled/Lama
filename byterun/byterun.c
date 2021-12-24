@@ -338,6 +338,7 @@ void interpreter (char *fname, bytefile *bf) {
   int *sp = stack;
   frame *fp = sp;
   char *ip = bf->code_ptr;
+  __gc_init();
 
 # define POP         *(--sp)
 # define PEEK        *(sp - 1)
