@@ -491,14 +491,18 @@ void interpreter (char *fname, bytefile *bf) {
 
     /* load a variable address to the stack */
     case LDA:
+    {
+      int *address;
       switch (l) {
-      case GLOBAL: PUSH(bf->global_ptr + INT); break;
-      case  LOCAL: PUSH(fp->locals + INT); break;
-      case    ARG: PUSH(fp->args + INT); break;
+      case GLOBAL: address = bf->global_ptr + INT; break;
+      case  LOCAL: address = fp->locals + INT; break;
+      case    ARG: address = fp->args + INT; break;
       case ACCESS: printf ("C(%d)", INT); break;
       default: FAILURE;
       }
+      PUSH(address); PUSH(address);
       break;
+    }
 
     /* store a value into a variable */
     case ST:
