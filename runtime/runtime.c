@@ -1077,6 +1077,32 @@ extern void* Barray (int bn, ...) {
   return r->contents;
 }
 
+extern void* Barray2 (int bn, int array[]) {
+  int     i; 
+  data    *r; 
+  int     n = UNBOX(bn);
+    
+  __pre_gc ();
+  
+#ifdef DEBUG_PRINT
+  indent++; print_indent ();
+  printf ("Barray: create n = %d\n", n); fflush(stdout);
+#endif
+  r = (data*) alloc (sizeof(int) * (n+1));
+
+  r->tag = ARRAY_TAG | (n << 3);
+  
+  for (i = 0; i<n; i++) {
+    ((int*)r->contents)[i] = array[i];
+  }
+  
+  __post_gc();
+#ifdef DEBUG_PRINT
+  indent--;
+#endif
+  return r->contents;
+}
+
 extern void* Bsexp (int bn, ...) {
   va_list args; 
   int     i;    
@@ -1117,6 +1143,47 @@ extern void* Bsexp (int bn, ...) {
 #endif
 
   va_end(args);
+
+  __post_gc();
+
+  return d->contents;
+}
+
+extern void* Bsexp2 (int bn, int array[], int tag) {
+  int     i;    
+  int     ai;  
+  size_t *p;  
+  sexp   *r;  
+  data   *d;  
+  int n = UNBOX(bn); 
+
+  __pre_gc () ;
+  
+#ifdef DEBUG_PRINT
+  indent++; print_indent ();
+  printf("Bsexp: allocate %zu!\n",sizeof(int) * (n+2)); fflush (stdout);
+#endif
+  r = (sexp*) alloc (sizeof(int) * (n+2));
+  d = &(r->contents);
+  r->tag = 0;
+    
+  d->tag = SEXP_TAG | (n << 3);
+  
+  for (i=0; i<n; i++) {
+    ai = array[i];
+    
+    p = (size_t*) ai;
+    ((int*)d->contents)[i] = ai;
+  }
+
+  r->tag = UNBOX(tag);
+
+#ifdef DEBUG_PRINT
+  r->tag = SEXP_TAG | ((r->tag) << 3);
+  print_indent ();
+  printf("Bsexp: ends\n"); fflush (stdout);
+  indent--;
+#endif
 
   __post_gc();
 

@@ -389,14 +389,20 @@ void interpreter (char *fname, bytefile *bf) {
 
       /* put a string on the stack */  
       case STRING:
-        PUSH(Bstring(bf->string_ptr + INT));
+        PUSH(Bstring(GETSTRING));
         break;
           
       /* create an S-expression */    
       case SEXP:
-        printf ("SEXP\t%s ", GETSTRING);
-        printf ("%d", INT);
+      {
+        int h = LtagHash(GETSTRING);
+        int n = INT;
+        int *array = malloc(n * sizeof(int));
+        for (int i = n - 1; i >= 0; --i) 
+          array[i] = POP;
+        PUSH(Bsexp2(BOX(n), array, h));
         break;
+      }
         
       /* store a value into a reference */
       case  STI:
@@ -585,7 +591,7 @@ void interpreter (char *fname, bytefile *bf) {
       case TAG:
       {
         int d = POP;
-        int h = LtagHash(bf->string_ptr + INT);
+        int h = LtagHash(GETSTRING);
         int n = INT;
         PUSH(Btag(d, h, BOX(n)));
         break;
@@ -644,8 +650,8 @@ void interpreter (char *fname, bytefile *bf) {
       {
         int n = INT;
         int *array = malloc(n * sizeof(int));
-        for (int i = 0; i < n; ++i) 
-          array[n - i - 1] = POP;
+        for (int i = n - 1; i >= 0; --i) 
+          array[i] = POP;
         PUSH(Barray2(BOX(n), array));
         break;
       }
