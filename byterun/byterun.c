@@ -640,10 +640,15 @@ void interpreter (char *fname, bytefile *bf) {
       case  LWRITE: PUSH(Lwrite(POP)); break;
       case LLENGTH: PUSH(Llength(POP)); break;
       case LSTRING: PUSH(Lstring(POP)); break;
-
-      case BARRAY:
-        printf ("CALL\tBarray\t%d", INT);
+      case  BARRAY:
+      {
+        int n = INT;
+        int *array = malloc(n * sizeof(int));
+        for (int i = 0; i < n; ++i) 
+          array[n - i - 1] = POP;
+        PUSH(Barray2(BOX(n), array));
         break;
+      }
 
       default: FAILURE;
       }
