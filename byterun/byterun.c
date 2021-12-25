@@ -359,22 +359,22 @@ void interpreter (char *fname, bytefile *bf) {
     /* binary operator */
     case BINOP:
     {
-      int y = POP;
-      int x = POP;
+      int y = UNBOX(POP);
+      int x = UNBOX(POP);
       switch (l) {
-      case  PLUS: PUSH(x +  y); break;
-      case MINUS: PUSH(x -  y); break;
-      case  MULT: PUSH(x *  y); break;
-      case   DIV: PUSH(x /  y); break;
-      case   MOD: PUSH(x %  y); break;
-      case    LT: PUSH(x <  y); break;
-      case    LE: PUSH(x <= y); break;
-      case    GT: PUSH(x >  y); break;
-      case    GE: PUSH(x >= y); break;
-      case    EQ: PUSH(x == y); break;
-      case   NEQ: PUSH(x != y); break;
-      case   AND: PUSH(x && y); break;
-      case    OR: PUSH(x || y); break;
+      case  PLUS: PUSH(BOX(x +  y)); break;
+      case MINUS: PUSH(BOX(x -  y)); break;
+      case  MULT: PUSH(BOX(x *  y)); break;
+      case   DIV: PUSH(BOX(x /  y)); break;
+      case   MOD: PUSH(BOX(x %  y)); break;
+      case    LT: PUSH(BOX(x <  y)); break;
+      case    LE: PUSH(BOX(x <= y)); break;
+      case    GT: PUSH(BOX(x >  y)); break;
+      case    GE: PUSH(BOX(x >= y)); break;
+      case    EQ: PUSH(BOX(x == y)); break;
+      case   NEQ: PUSH(BOX(x != y)); break;
+      case   AND: PUSH(BOX(x && y)); break;
+      case    OR: PUSH(BOX(x || y)); break;
       default: FAILURE; 
       }
       break;
@@ -384,7 +384,7 @@ void interpreter (char *fname, bytefile *bf) {
       switch (l) {
       /* put a constant on the stack */
       case CONST:
-        PUSH(INT);
+        PUSH(BOX(INT));
         break;
 
       /* put a string on the stack */  
@@ -404,7 +404,7 @@ void interpreter (char *fname, bytefile *bf) {
         int x = POP;
         int v = POP;
         PUSH(x);
-        bf->global_ptr[v] = BOX(x);
+        bf->global_ptr[v] = x;
         break;
       }
         
@@ -414,7 +414,7 @@ void interpreter (char *fname, bytefile *bf) {
         int v = POP;
         int i = POP;
         int x = POP;
-        PUSH(UNBOX(Bsta(BOX(v), BOX(i), BOX(x))));
+        PUSH(Bsta(v, i, x));
         break;
       }
         
@@ -464,12 +464,11 @@ void interpreter (char *fname, bytefile *bf) {
       {
         int i = POP;
         int p = POP;
-        PUSH(UNBOX(Belem(BOX(p), BOX(i))));
+        PUSH(Belem(p, i));
         break;
       }
         
-      default:
-        FAILURE;
+      default: FAILURE;
       }
       break;
       
@@ -512,7 +511,7 @@ void interpreter (char *fname, bytefile *bf) {
       case CJMPz:
       {
         int l = INT;
-        if (!POP) ip = bf->code_ptr + l;
+        if (!UNBOX(POP)) ip = bf->code_ptr + l;
         break;
       }
         
@@ -520,7 +519,7 @@ void interpreter (char *fname, bytefile *bf) {
       case CJMPnz:
       {
         int l = INT; 
-        if (POP) ip = bf->code_ptr + l;
+        if (UNBOX(POP)) ip = bf->code_ptr + l;
         break;
       }
         
@@ -588,7 +587,7 @@ void interpreter (char *fname, bytefile *bf) {
         int d = POP;
         int h = LtagHash(bf->string_ptr + INT);
         int n = INT;
-        PUSH(UNBOX(Btag(BOX(d), h, BOX(n))));
+        PUSH(Btag(d, h, BOX(n)));
         break;
       }
         
@@ -597,7 +596,7 @@ void interpreter (char *fname, bytefile *bf) {
       {
         int d = POP;
         int n = INT;
-        PUSH(UNBOX(Barray_patt(BOX(d), BOX(n))));
+        PUSH(Barray_patt(d, BOX(n)));
         break;
       }
         
@@ -607,7 +606,7 @@ void interpreter (char *fname, bytefile *bf) {
         int v = POP;
         int line = INT;
         int col = INT;
-        Bmatch_failure(BOX(v), fname, BOX(line), BOX(col));
+        Bmatch_failure(v, fname, BOX(line), BOX(col));
         break;
       }
         
@@ -616,21 +615,20 @@ void interpreter (char *fname, bytefile *bf) {
         INT;
         break;
 
-      default:
-        FAILURE;
+      default: FAILURE;
       }
       break;
       
     /* checks various patterns */
     case PATTERN:
       switch (l) {
-      case    str: PUSH(UNBOX(Bstring_patt(BOX(POP), BOX(POP)))); break;
-      case string: PUSH(UNBOX(Bstring_tag_patt(BOX(POP)))); break;
-      case  array: PUSH(UNBOX(Barray_tag_patt(BOX(POP)))); break;
-      case   sexp: PUSH(UNBOX(Bsexp_tag_patt(BOX(POP)))); break;
-      case    ref: PUSH(UNBOX(Bboxed_patt(BOX(POP)))); break;
-      case    val: PUSH(UNBOX(Bunboxed_patt(BOX(POP)))); break;
-      case    fun: PUSH(UNBOX(Bclosure_tag_patt(BOX(POP)))); break;
+      case    str: PUSH(Bstring_patt(POP, POP)); break;
+      case string: PUSH(Bstring_tag_patt(POP)); break;
+      case  array: PUSH(Barray_tag_patt(POP)); break;
+      case   sexp: PUSH(Bsexp_tag_patt(POP)); break;
+      case    ref: PUSH(Bboxed_patt(POP)); break;
+      case    val: PUSH(Bunboxed_patt(POP)); break;
+      case    fun: PUSH(Bclosure_tag_patt(POP)); break;
       default: FAILURE;
       }
       // printf ("PATT\t%s", pats[l]);
@@ -638,34 +636,21 @@ void interpreter (char *fname, bytefile *bf) {
 
     case RUNTIME: {
       switch (l) {
-      case LREAD:
-        PUSH(UNBOX(Lread()));
-        break;
-        
-      case LWRITE:
-        PUSH(UNBOX(Lwrite(BOX(POP))));
-        break;
-
-      case LLENGTH:
-        PUSH(UNBOX(Llength(POP)));
-        break;
-
-      case LSTRING:
-        PUSH(UNBOX(Lstring(POP)));
-        break;
+      case   LREAD: PUSH(Lread()); break;
+      case  LWRITE: PUSH(Lwrite(POP)); break;
+      case LLENGTH: PUSH(Llength(POP)); break;
+      case LSTRING: PUSH(Lstring(POP)); break;
 
       case BARRAY:
         printf ("CALL\tBarray\t%d", INT);
         break;
 
-      default:
-        FAILURE;
+      default: FAILURE;
       }
     }
     break;
       
-    default:
-      FAILURE;
+    default: FAILURE;
     }
   }
   while (1);
