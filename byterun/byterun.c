@@ -325,8 +325,8 @@ void dump_file (FILE *f, bytefile *bf) {
 
 /* Activation frame */
 typedef struct {
-  struct frame *previousFP;
-  int *previousIP;
+  int *previous_ip;
+  struct frame *previous_fp;
   int *args;
   int *locals;
   int *access;
@@ -346,6 +346,7 @@ void interpreter (char *fname, bytefile *bf) {
 
 # define UNBOX(x)    (((int) (x)) >> 1)
 # define BOX(x)      ((((int) (x)) << 1) | 0x0001)
+# define LEN(x)      ((x & 0xFFFFFFF8) >> 3)
 
   do {
     char x = BYTE,
@@ -436,8 +437,8 @@ void interpreter (char *fname, bytefile *bf) {
         if (fp->args == stack) goto stop;
         int result = POP;
         sp = fp->args;
-        ip = fp->previousIP;
-        fp = fp->previousFP;
+        ip = fp->previous_ip;
+        fp = fp->previous_fp;
         PUSH(result);
         break;
         
@@ -538,17 +539,14 @@ void interpreter (char *fname, bytefile *bf) {
       {
         int args = INT;
         int locals = INT;
-        int operands = args + 1;
-        sp += operands;
-        int *previousIP = POP;
-        frame *newFP = sp;
-        newFP->previousFP = fp;
-        newFP->previousIP = previousIP;
-        newFP->args = sp - args;
+        sp += args;
+        frame *new_fp = sp;
+        new_fp->previous_fp = fp;
+        new_fp->args = new_fp->locals = sp - args;
         sp += sizeof(frame);
-        newFP->locals = sp;
+        new_fp->locals = sp;
         sp += locals;
-        fp = newFP;
+        fp = new_fp;
         break;
       }
         
@@ -560,31 +558,49 @@ void interpreter (char *fname, bytefile *bf) {
         
       /* create a closure */
       case CLOSURE:
-        printf ("CLOSURE\t0x%.8x", INT);
-        {int n = INT;
-         for (int i = 0; i<n; i++) {
-         switch (BYTE) {
-           case GLOBAL: printf ("G(%d)", INT); break;
-           case  LOCAL: printf ("L(%d)", INT); break;
-           case    ARG: printf ("A(%d)", INT); break;
-           case ACCESS: printf ("C(%d)", INT); break;
-           default: FAILURE;
-         }
-         }
-        };
+      {
+        int entry = INT;
+        int n = INT;
+        int *array = malloc(n * sizeof(int));
+        for (int i = n - 1; i >= 0; --i) {
+          switch (BYTE) {
+            case GLOBAL: array[i] = bf->global_ptr[INT]; break;
+            case  LOCAL: array[i] = fp->locals[INT]; break;
+            case    ARG: array[i] = fp->args[INT]; break;
+            case ACCESS: printf ("C(%d)", INT); break;
+            default: FAILURE;
+          }
+        }
+        PUSH(Bclosure2(BOX(n), entry, array));
         break;
+      }
           
       /* calls a closure */
       case CALLC:
-        printf ("CALLC\t%d", INT);
+      {
+        int n = INT;
+        int *access = *(sp - n - 1);
+        memmove(sp - n - 1, sp - n, n * sizeof(int));
+        POP;
+        int access_n = LEN(access[-1]) - 1;
+        int l = access[0];
+        int operands = n + access_n + 2;
+        PUSH(ip);
+        PUSH(access_n);
+        ++access;
+        for (int i = access_n - 1; i >= 0; --i)
+          PUSH(access[i]);
+        sp -= operands;
+        ip = bf->code_ptr + l;
         break;
+      }
         
       /* calls a function/procedure */
       case CALL:
       {
         int l = INT;
-        int args = INT;
-        int operands = args + 1;
+        int n = INT;
+        int operands = n + 1;
         PUSH(ip);
         sp -= operands;
         ip = bf->code_ptr + l;
