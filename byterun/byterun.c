@@ -219,7 +219,7 @@ void disassemble (FILE *f, bytefile *bf) {
         break;
         
       case CLOSURE:
-        fprintf (f, "CLOSURE\t0x%.8x", INT);
+        fprintf (f, "CLOSURE\t0x%.8x\t", INT);
         {int n = INT;
          for (int i = 0; i<n; i++) {
          switch (BYTE) {
@@ -485,7 +485,7 @@ void interpreter (char *fname, bytefile *bf) {
       case GLOBAL: PUSH(bf->global_ptr[INT]); break;
       case  LOCAL: PUSH(fp->locals[INT]); break;
       case    ARG: PUSH(fp->args[INT]); break;
-      case ACCESS: printf ("C(%d)", INT); break;
+      case ACCESS: PUSH(*(int*)fp->access[INT]); break;
       default: FAILURE;
       }
       break;
@@ -498,7 +498,7 @@ void interpreter (char *fname, bytefile *bf) {
       case GLOBAL: address = bf->global_ptr + INT; break;
       case  LOCAL: address = fp->locals + INT; break;
       case    ARG: address = fp->args + INT; break;
-      case ACCESS: printf ("C(%d)", INT); break;
+      case ACCESS: address = fp->access[INT]; break;
       default: FAILURE;
       }
       PUSH(address); PUSH(address);
@@ -511,7 +511,7 @@ void interpreter (char *fname, bytefile *bf) {
       case GLOBAL: bf->global_ptr[INT] = PEEK; break;
       case  LOCAL: fp->locals[INT] = PEEK; break;
       case    ARG: fp->args[INT] = PEEK; break;
-      case ACCESS: printf ("C(%d)", INT); break;
+      case ACCESS: *(int*)fp->access[INT] = PEEK; break;
       default: FAILURE;
       }
       break;
@@ -542,9 +542,9 @@ void interpreter (char *fname, bytefile *bf) {
         sp += args;
         frame *new_fp = sp;
         new_fp->previous_fp = fp;
-        new_fp->args = new_fp->locals = sp - args;
+        new_fp->args = sp - args;
         sp += sizeof(frame);
-        new_fp->locals = sp;
+        new_fp->locals = new_fp->access = sp;
         sp += locals;
         fp = new_fp;
         break;
@@ -552,9 +552,24 @@ void interpreter (char *fname, bytefile *bf) {
         
       /* begins procedure definition with closure */
       case CBEGIN:
-        printf ("CBEGIN\t%d ", INT);
-        printf ("%d", INT);
+      {
+        int args = INT;
+        int locals = INT;
+        sp += args + 2;
+        int accesses = POP;
+        int previous_ip = POP;
+        sp += accesses + 2;
+        frame *new_fp = sp;
+        new_fp->previous_ip = previous_ip;
+        new_fp->previous_fp = fp;
+        new_fp->args = sp - args - accesses - 2;
+        new_fp->access = sp - accesses;
+        sp += sizeof(frame);
+        new_fp->locals = sp;
+        sp += locals;
+        fp = new_fp;
         break;
+      }
         
       /* create a closure */
       case CLOSURE:
@@ -567,7 +582,7 @@ void interpreter (char *fname, bytefile *bf) {
             case GLOBAL: array[i] = bf->global_ptr[INT]; break;
             case  LOCAL: array[i] = fp->locals[INT]; break;
             case    ARG: array[i] = fp->args[INT]; break;
-            case ACCESS: printf ("C(%d)", INT); break;
+            case ACCESS: array[i] = *(int*)fp->access[INT]; break;
             default: FAILURE;
           }
         }
@@ -589,7 +604,7 @@ void interpreter (char *fname, bytefile *bf) {
         PUSH(access_n);
         ++access;
         for (int i = access_n - 1; i >= 0; --i)
-          PUSH(access[i]);
+          PUSH(access + i);
         sp -= operands;
         ip = bf->code_ptr + l;
         break;
