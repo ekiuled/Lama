@@ -323,6 +323,34 @@ void dump_file (FILE *f, bytefile *bf) {
   disassemble (f, bf);
 }
 
+/* Stack operations */
+static const size_t STACK_SIZE = 10 * 1024 * 1024;
+
+void check_overflow(int *stack, int *sp) {
+  if (sp == stack + STACK_SIZE)
+    failure ("ERROR: stack overflow");
+}
+
+void check_underflow(int *stack, int *sp) {
+  if (sp == stack) 
+    failure ("ERROR: stack underflow");
+}
+
+int pop(int *stack, int **sp) {
+  check_underflow(stack, *sp);
+  return *(--(*sp));
+}
+
+int peek(int *stack, int *sp) {
+  check_underflow(stack, sp);
+  return *(sp - 1);
+}
+
+void push(int *stack, int **sp, int x) {
+  check_overflow(stack, *sp);
+  *((*sp)++) = x;
+}
+
 /* Activation frame */
 typedef struct {
   int *previous_ip;
@@ -334,15 +362,15 @@ typedef struct {
 
 /* Stack machine iterative interpreter */
 void interpreter (char *fname, bytefile *bf) {
-  int *stack = malloc(10 * 1024 * 1024);
+  int *stack = malloc(STACK_SIZE * sizeof(int));
   int *sp = stack;
   frame *fp = sp;
   char *ip = bf->code_ptr;
   __gc_init();
 
-# define POP         *(--sp)
-# define PEEK        *(sp - 1)
-# define PUSH(x)     *(sp++) = x
+# define POP         pop(stack, &sp)
+# define PEEK        peek(stack, sp)
+# define PUSH(x)     push(stack, &sp, x)
 
 # define UNBOX(x)    (((int) (x)) >> 1)
 # define BOX(x)      ((((int) (x)) << 1) | 0x0001)
