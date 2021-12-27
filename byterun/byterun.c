@@ -325,6 +325,7 @@ void dump_file (FILE *f, bytefile *bf) {
 
 /* Stack operations */
 static const size_t STACK_SIZE = 10 * 1024 * 1024;
+extern size_t __gc_stack_top, __gc_stack_bottom;
 
 void check_overflow(int *stack, int *sp) {
   if (sp == stack + STACK_SIZE)
@@ -338,7 +339,8 @@ void check_underflow(int *stack, int *sp) {
 
 int pop(int *stack, int **sp) {
   check_underflow(stack, *sp);
-  return *(--(*sp));
+  __gc_stack_top = --(*sp);
+  return **sp;
 }
 
 int peek(int *stack, int *sp) {
@@ -349,6 +351,7 @@ int peek(int *stack, int *sp) {
 void push(int *stack, int **sp, int x) {
   check_overflow(stack, *sp);
   *((*sp)++) = x;
+  __gc_stack_top = *sp;
 }
 
 /* Activation frame */
@@ -366,7 +369,11 @@ void interpreter (char *fname, bytefile *bf) {
   int *sp = stack;
   frame *fp = sp;
   char *ip = bf->code_ptr;
-  __gc_init();
+
+  /* Initialize GC */
+  __gc_stack_bottom = stack;
+  __gc_stack_top = sp;
+  __init();
 
 # define POP         pop(stack, &sp)
 # define PEEK        peek(stack, sp)
@@ -465,7 +472,7 @@ void interpreter (char *fname, bytefile *bf) {
       case  RET:
         if (fp->args == stack) goto stop;
         int result = POP;
-        sp = fp->args;
+        __gc_stack_top = sp = fp->args;
         ip = fp->previous_ip;
         fp = fp->previous_fp;
         PUSH(result);
@@ -574,7 +581,7 @@ void interpreter (char *fname, bytefile *bf) {
         new_fp->args = sp - args;
         sp += sizeof(frame);
         new_fp->locals = new_fp->access = sp;
-        sp += locals;
+        __gc_stack_top = sp += locals;
         fp = new_fp;
         break;
       }
@@ -595,7 +602,7 @@ void interpreter (char *fname, bytefile *bf) {
         new_fp->access = sp - accesses;
         sp += sizeof(frame);
         new_fp->locals = sp;
-        sp += locals;
+        __gc_stack_top = sp += locals;
         fp = new_fp;
         break;
       }
@@ -635,7 +642,7 @@ void interpreter (char *fname, bytefile *bf) {
         ++access;
         for (int i = access_n - 1; i >= 0; --i)
           PUSH(access + i);
-        sp -= operands;
+        __gc_stack_top = sp -= operands;
         ip = bf->code_ptr + l;
         break;
       }
@@ -647,7 +654,7 @@ void interpreter (char *fname, bytefile *bf) {
         int n = INT;
         int operands = n + 1;
         PUSH(ip);
-        sp -= operands;
+        __gc_stack_top = sp -= operands;
         ip = bf->code_ptr + l;
         break;
       }
