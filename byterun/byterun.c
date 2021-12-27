@@ -430,6 +430,7 @@ void interpreter (char *fname, bytefile *bf) {
         for (int i = n - 1; i >= 0; --i) 
           array[i] = POP;
         PUSH(Bsexp2(BOX(n), array, h));
+        free(array);
         break;
       }
         
@@ -615,6 +616,7 @@ void interpreter (char *fname, bytefile *bf) {
           }
         }
         PUSH(Bclosure2(BOX(n), entry, array));
+        free(array);
         break;
       }
           
@@ -716,6 +718,7 @@ void interpreter (char *fname, bytefile *bf) {
         for (int i = n - 1; i >= 0; --i) 
           array[i] = POP;
         PUSH(Barray2(BOX(n), array));
+        free(array);
         break;
       }
 
