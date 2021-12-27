@@ -2,7 +2,7 @@ EXECUTABLE = src/lamac
 INSTALL ?= install -v
 MKDIR ?= mkdir
 
-.PHONY: all regression
+.PHONY: all regression performance
 
 all:
 	$(MAKE) -C src
@@ -24,6 +24,9 @@ uninstall:
 regression:
 	$(MAKE) clean check -C regression
 	$(MAKE) clean check -C stdlib/regression
+
+performance:
+	$(MAKE) clean check -C performance
 
 clean:
 	$(MAKE) clean -C src
